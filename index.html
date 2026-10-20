@@ -67,7 +67,7 @@ const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));return true}cat
 const UNS=['kg','L','t','sc','un','cx','bag','ha'];
 const PRODUTORES=['Koro Hamaguchi','Nilton Hamaguchi'];
 
-let settings=load(K_SET,{nome:'',webhookUrl:''});
+let settings=Object.assign({nome:'',webhookUrl:'',webhookUrlRec:'',webhookUrlLista:''},load(K_SET,{}));
 let pedidos=load(K_PED,[]);
 let recs=load(K_REC,[]);
 let tab='pedidos', openId=null, foto=null, preselect='', pendentes=0, semFotoOk=false;
@@ -93,13 +93,45 @@ async function flush(manual){
     const items=(await outAll()).sort((a,b)=>a.key.localeCompare(b.key));
     for(const it of items){
       let ok=false;
-      try{const r=await fetch(settings.webhookUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:it.body});ok=r.ok}catch{ok=false}
+      const url=it.kind==='rec'?(settings.webhookUrlRec||''):settings.webhookUrl;
+      if(!url){if(manual)toast('Falta cadastrar o endereço do fluxo de recebimento em Ajustes.',5000);break}
+      try{const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:it.body});ok=r.ok}catch{ok=false}
       if(!ok){if(manual)toast('O envio falhou. Confira o endereço do fluxo e tente de novo.');break}
       await outDel(it.key);
       const list=it.kind==='pedido'?pedidos:recs; const x=list.find(y=>y.id===it.refId); if(x)x.synced=true;
     }
     save(K_PED,pedidos);save(K_REC,recs);
   }finally{flushing=false;await contarPend();render()}
+}
+
+/* ---------- sincronização com o cadastro central ---------- */
+let sincronizando=false;
+function lerItemRemoto(x){
+  try{
+    if(x&&x.$content&&typeof x.$content==='string'){return JSON.parse(decodeURIComponent(escape(atob(x.$content))))}
+    if(typeof x==='string')return JSON.parse(x);
+  }catch{return null}
+  return x;
+}
+async function sincronizar(manual){
+  if(sincronizando)return;
+  if(!settings.webhookUrlLista){if(manual)toast('Cadastre o endereço do fluxo de lista em Ajustes.');return}
+  if(!navigator.onLine){if(manual)toast('Sem internet. Mostrando o que está salvo neste aparelho.');return}
+  sincronizando=true;
+  try{
+    const r=await fetch(settings.webhookUrlLista,{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(!r.ok)throw new Error('http '+r.status);
+    const arr=await r.json();
+    let novos=0;
+    for(const raw of (Array.isArray(arr)?arr:[])){
+      const x=lerItemRemoto(raw);if(!x||!x.id||!x.codigo)continue;
+      if(x.tipo){ if(!recs.some(y=>y.id===x.id)){recs.push({...x,synced:true});novos++} }
+      else if(x.itens){ const l=pedidos.find(y=>y.id===x.id||y.codigo===x.codigo&&y.externo); if(!l){pedidos.push({...x,synced:true});novos++} else if(l.externo&&x.gerente){Object.assign(l,x,{externo:false,synced:true})} }
+    }
+    save(K_PED,pedidos);save(K_REC,recs);render();
+    if(manual)toast(novos?`${novos} novo(s) da rede.`:'Tudo em dia.');
+  }catch(e){if(manual)toast('Não consegui atualizar a lista. Confira o endereço do fluxo de lista.',5000)}
+  finally{sincronizando=false}
 }
 async function enfileirar(kind,refId,payload){
   const key=Date.now().toString().padStart(14,'0')+Math.random().toString(36).slice(2,5);
@@ -133,7 +165,9 @@ function textoRec(p,r,resumo){
 function resumoRec(p){return 'Situação: '+p.itens.map((it,i)=>`${it.nome} ${fq(recebidoItem(p,i))}/${fq(it.qtd)} ${it.un}`).join(' · ')}
 
 /* ---------- fotos ---------- */
-function shrink(file,max=1280){return new Promise(res=>{const fr=new FileReader();fr.onerror=()=>res(null);fr.onload=()=>{const im=new Image();im.onerror=()=>res(null);im.onload=()=>{const s=Math.min(1,max/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);c.getContext('2d').drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.7))};im.src=fr.result};fr.readAsDataURL(file)})}
+function shrink(file,max=2600){return new Promise(res=>{const fr=new FileReader();fr.onerror=()=>res(null);fr.onload=()=>{const im=new Image();im.onerror=()=>res(null);im.onload=()=>{const s=Math.min(1,max/Math.max(im.width,im.height));const c=document.createElement('canvas');c.width=Math.round(im.width*s);c.height=Math.round(im.height*s);c.getContext('2d').drawImage(im,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.9))};im.src=fr.result};fr.readAsDataURL(file)})}
+const MAX_PDF=10*1024*1024;
+function lerArquivo(file){return new Promise(res=>{if(file.type==='application/pdf'||/\.pdf$/i.test(file.name)){if(file.size>MAX_PDF){toast('PDF acima de 10 MB. Escaneie em qualidade menor.',5000);return res(null)}const fr=new FileReader();fr.onerror=()=>res(null);fr.onload=()=>res(String(fr.result).replace(/^data:[^;]*;/,'data:application/pdf;'));fr.readAsDataURL(file)}else shrink(file).then(res)})}
 
 /* ---------- telas ---------- */
 function render(){
@@ -178,7 +212,7 @@ function vNovo(){
   <div class="row"><label>Vencimento<input id="n-venc" type="date"></label><label>Prazo de entrega<input id="n-prazo" placeholder="Entrega imediata"></label></div>
   <label>Uso (cultura / talhão)<input id="n-uso" placeholder="Ex.: soja, pivô 2 Retiro"></label>
   <label>Observação<textarea id="n-obs"></textarea></label>
-  <label>Foto do pedido (opcional)<input id="n-foto" type="file" accept="image/*"></label>
+  <label>Anexo do pedido: foto ou PDF (opcional)<input id="n-foto" type="file" accept="image/*,application/pdf"></label>
   <img class="prev" id="n-prev" alt="" hidden>
   <div class="small">O PDF oficial do pedido continua indo na pasta PEDIDOS DE INSUMOS.</div>
   <button class="btn" type="submit">Enviar pedido</button></form>`;
@@ -198,14 +232,17 @@ function vReceber(){
   <label id="r-mae-w" hidden>Número da NF mãe<input id="r-mae" inputmode="numeric"></label>
   <label>Fornecedor / produtor que emitiu<input id="r-forn" value="${esc(p0?p0.fornecedor:'')}"></label>
   <div id="r-itens" style="display:flex;flex-direction:column;gap:10px">${recItens(p0)}</div>
-  <label>Foto da NF (abre a câmera)<input id="r-foto" type="file" accept="image/*" capture="environment"></label>
+  <label>Tirar foto da NF agora (não fica salva no celular)<input id="r-foto" type="file" accept="image/*" capture="environment"></label>
+  <label>Ou anexar um arquivo (PDF escaneado ou foto da galeria)<input id="r-arq" type="file" accept="image/*,application/pdf"></label>
   <img class="prev" id="r-prev" alt="" hidden>
   <button class="btn" type="submit">Salvar recebimento</button></form>`;
 }
 function vAjustes(){
   return `<form class="card" id="fSet">
   <label>Seu nome<input id="s-nome" value="${esc(settings.nome)}" autocomplete="name"></label>
-  <label>Endereço do fluxo (Power Automate)<textarea id="s-url" placeholder="https://prod-…logic.azure.com/…">${esc(settings.webhookUrl)}</textarea></label>
+  <label>Endereço do fluxo de PEDIDO<textarea id="s-url" placeholder="https://prod-…logic.azure.com/…">${esc(settings.webhookUrl)}</textarea></label>
+  <label>Endereço do fluxo de RECEBIMENTO<textarea id="s-url2" placeholder="https://prod-…logic.azure.com/…">${esc(settings.webhookUrlRec)}</textarea></label>
+  <label>Endereço do fluxo de LISTA (sincroniza os aparelhos)<textarea id="s-url3" placeholder="https://prod-…logic.azure.com/…">${esc(settings.webhookUrlLista)}</textarea></label>
   <button class="btn" type="submit">Salvar ajustes</button>
   <div class="row"><button class="btn sec" type="button" id="b-teste">Enviar teste</button><button class="btn sec" type="button" id="b-flush">Enviar pendências agora</button></div>
   <button class="btn ghost" type="button" id="b-exp">Copiar backup dos dados</button>
@@ -214,7 +251,7 @@ function vAjustes(){
 
 /* ---------- eventos ---------- */
 document.querySelector('nav').addEventListener('click',e=>{const b=e.target.closest('button');if(b){tab=b.dataset.tab;foto=null;render();scrollTo(0,0)}});
-$('#sync').addEventListener('click',()=>flush(true));
+$('#sync').addEventListener('click',async()=>{await flush(true);sincronizar(true)});
 document.addEventListener('click',async e=>{
   const o=e.target.closest('[data-open]');if(o){openId=openId===o.dataset.open?null:o.dataset.open;render();return}
   const r=e.target.closest('[data-receber]');if(r){preselect=r.dataset.receber;tab='receber';foto=null;render();scrollTo(0,0);return}
@@ -230,11 +267,11 @@ document.addEventListener('change',async e=>{
   if(id==='n-prd')$('#n-prd-o-w').hidden=e.target.value!=='__o';
   if(id==='r-ped'){$('#r-outro').hidden=e.target.value!=='__outro';const p=pedidos.find(x=>x.codigo===e.target.value);$('#r-itens').innerHTML=recItens(e.target.value==='__outro'?null:p);if(p)$('#r-forn').value=p.fornecedor||''}
   if(id==='r-tipo')$('#r-mae-w').hidden=e.target.value!=='filha';
-  if(id==='n-foto'||id==='r-foto'){const f=e.target.files[0];foto=f?await shrink(f):null;const pv=$(id==='n-foto'?'#n-prev':'#r-prev');if(foto){pv.src=foto;pv.hidden=false}else pv.hidden=true;if(f&&!foto)toast('Não consegui ler essa imagem. Tire a foto de novo.')}
+  if(id==='n-foto'||id==='r-foto'||id==='r-arq'){const f=e.target.files[0];foto=f?await lerArquivo(f):null;const pv=$(id==='n-foto'?'#n-prev':'#r-prev');if(foto&&foto.startsWith('data:image')){pv.src=foto;pv.hidden=false}else{pv.hidden=true;if(foto)toast('PDF anexado: '+f.name+'. Se esse arquivo está no celular, apague depois de salvar.',4000)}if(foto&&foto.startsWith('data:image')&&id==='r-arq')toast('Imagem pronta. Se ela está na galeria, apague depois de salvar.',4000);if(f&&!foto&&f.size<=MAX_PDF)toast('Não consegui ler esse arquivo. Tente de novo.')}
 });
 document.addEventListener('submit',async e=>{
   e.preventDefault();const id=e.target.id;
-  if(id==='fSet'){settings={nome:$('#s-nome').value.trim(),webhookUrl:$('#s-url').value.trim()};save(K_SET,settings);toast('Ajustes salvos.');flush(false)}
+  if(id==='fSet'){settings={nome:$('#s-nome').value.trim(),webhookUrl:$('#s-url').value.trim(),webhookUrlRec:$('#s-url2').value.trim(),webhookUrlLista:$('#s-url3').value.trim()};save(K_SET,settings);toast('Ajustes salvos.');flush(false).then(()=>sincronizar(true))}
   if(id==='fNovo'){
     const itens=[...document.querySelectorAll('#itens .it')].map(r=>({nome:$('.i-nome',r).value.trim(),qtd:parseFloat($('.i-qtd',r).value),un:$('.i-un',r).value,preco:parseFloat($('.i-preco',r).value)||0})).filter(i=>i.nome);
     if(!itens.length||itens.some(i=>!(i.qtd>0)))return toast('Cada item precisa de produto e quantidade.');
@@ -263,14 +300,15 @@ document.addEventListener('submit',async e=>{
     settings.nome=r.por;save(K_SET,settings);recs.push(r);save(K_REC,recs);
     const saldos=(tipo==='mae'||tipo==='filha')?(()=>{const m=recsDe(p.codigo).find(x=>x.tipo==='mae'&&x.nf===(tipo==='mae'?nf:maeNf));return m?p.itens.map((it,i)=>({item:it.nome,saldo:saldoMaeItem(p,m,i)})):null})():null;
     const resumo=resumoRec(p)+(saldos?`\nSaldo da NF mãe ${tipo==='mae'?nf:maeNf}: `+saldos.filter((s,i)=>true).map(s=>`${s.item} ${fq(s.saldo)}`).join(' · '):'');
-    await enfileirar('rec',r.id,{evento:'recebimento',texto:textoRec(p,r,resumo),registro:{pedido:{codigo:p.codigo,fornecedor:p.fornecedor,produtor:p.produtor,fazenda:p.fazenda,itens:p.itens},recebimento:{...r,foto},saldoMae:saldos}});
+    await enfileirar('rec',r.id,{evento:'recebimento',texto:textoRec(p,r,resumo),registro:{...r,foto,saldoMae:saldos}});
     foto=null;preselect='';openId=p.id;tab='pedidos';render();toast('Recebimento salvo e na fila de envio.');
   }
 });
 
-window.addEventListener('online',()=>flush(false));
+window.addEventListener('online',()=>{flush(false);sincronizar(false)});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){flush(false);sincronizar(false)}});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('service-worker.js').catch(()=>{});
-contarPend().then(()=>{render();flush(false)});
+contarPend().then(()=>{render();flush(false).then(()=>sincronizar(false))});
 </script>
 </body>
 </html>
