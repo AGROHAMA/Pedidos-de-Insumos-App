@@ -102,7 +102,7 @@ async function flush(manual){
       const list=it.kind==='pedido'?pedidos:recs; const x=list.find(y=>y.id===it.refId); if(x)x.synced=true;
     }
     save(K_PED,pedidos);save(K_REC,recs);
-  }finally{flushing=false;await contarPend();render()}
+  }finally{flushing=false;await contarPend();renderBg()}
 }
 
 /* ---------- sincronização com o cadastro central ---------- */
@@ -129,7 +129,7 @@ async function sincronizar(manual){
       if(x.tipo){ if(!recs.some(y=>y.id===x.id)){recs.push({...x,synced:true});novos++} }
       else if(x.itens){ const l=pedidos.find(y=>y.id===x.id||y.codigo===x.codigo&&y.externo); if(!l){pedidos.push({...x,synced:true});novos++} else if(l.externo&&x.gerente){Object.assign(l,x,{externo:false,synced:true})} }
     }
-    save(K_PED,pedidos);save(K_REC,recs);render();
+    save(K_PED,pedidos);save(K_REC,recs);renderBg();
     if(manual)toast(novos?`${novos} novo(s) da rede.`:'Tudo em dia.');
   }catch(e){if(manual)toast('Não consegui atualizar a lista. Confira o endereço do fluxo de lista.',5000)}
   finally{sincronizando=false}
@@ -171,6 +171,8 @@ const MAX_PDF=10*1024*1024;
 function lerArquivo(file){return new Promise(res=>{if(file.type==='application/pdf'||/\.pdf$/i.test(file.name)){if(file.size>MAX_PDF){toast('PDF acima de 10 MB. Escaneie em qualidade menor.',5000);return res(null)}const fr=new FileReader();fr.onerror=()=>res(null);fr.onload=()=>res(String(fr.result).replace(/^data:[^;]*;/,'data:application/pdf;'));fr.readAsDataURL(file)}else shrink(file).then(res)})}
 
 /* ---------- telas ---------- */
+/* atualização em segundo plano: nunca apaga formulário que alguém está preenchendo */
+function renderBg(){if(tab==='pedidos')render()}
 function render(){
   document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.tab===tab?'page':'false'));
   $('#app').innerHTML={pedidos:vPedidos,novo:vNovo,receber:vReceber,ajustes:vAjustes}[tab]();
