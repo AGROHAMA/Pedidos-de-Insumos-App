@@ -1,7 +1,7 @@
 // Troque a versão (v1 -> v2...) sempre que publicar uma nova index.html
-const CACHE_VERSION='v8';
+const CACHE_VERSION='v9';
 const CACHE = 'pedidos-insumos-' + CACHE_VERSION;
-const SHELL = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
+const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => Promise.all(SHELL.map(u=>c.add(u).catch(()=>{})))).then(() => self.skipWaiting()));
