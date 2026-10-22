@@ -238,11 +238,12 @@ function vReceber(){
     <label>Código do pedido (está na postagem do Teams)<input id="o-cod" placeholder="P-2010-1432-K7"></label>
     <div class="row"><label>Produto<input id="o-prod"></label><label>Quantidade pedida<input id="o-qtd" type="number" step="any" inputmode="decimal"></label><label>Unidade<select id="o-un">${unOpts('L')}</select></label></div></div>
   <label>Seu nome<input id="r-por" required value="${esc(settings.nome)}" autocomplete="name"></label>
-  <label>Tipo da NF<select id="r-tipo"><option value="unica">NF única</option><option value="mae">NF mãe (total do pedido)</option><option value="filha">NF filha (parte da mãe)</option></select></label>
+  <label>Tipo da NF<select id="r-tipo"><option value="unica">NF única — integral (baixa tudo que falta)</option><option value="mae">NF mãe (total do pedido)</option><option value="filha">NF filha (parte da mãe)</option></select></label>
   <label>Número da NF<input id="r-nf" required inputmode="numeric"></label>
   <label id="r-mae-w" hidden>Número da NF mãe<input id="r-mae" inputmode="numeric"></label>
   <label>Fornecedor / produtor que emitiu<input id="r-forn" list="dl-forn" autocomplete="off" value="${esc(p0?p0.fornecedor:'')}"></label>
-  <div id="r-itens" style="display:flex;flex-direction:column;gap:10px">${recItens(p0)}</div>
+  <div class="small" id="r-integral">NF integral: o app dá baixa em todos os itens que ainda faltam neste pedido. Não precisa digitar quantidade.</div>
+  <div id="r-itens" style="display:flex;flex-direction:column;gap:10px" hidden>${recItens(p0)}</div>
   <label>Tirar foto da NF agora (não fica salva no celular)<input id="r-foto" type="file" accept="image/*" capture="environment"></label>
   <label>Ou anexar um arquivo (PDF escaneado ou foto da galeria)<input id="r-arq" type="file" accept="image/*,application/pdf,.pdf"></label>
   <img class="prev" id="r-prev" alt="" hidden>
@@ -284,7 +285,7 @@ document.addEventListener('change',async e=>{
   const id=e.target.id;
   if(id==='n-prd')$('#n-prd-o-w').hidden=e.target.value!=='__o';
   if(id==='r-ped'){$('#r-outro').hidden=e.target.value!=='__outro';const p=pedidos.find(x=>x.codigo===e.target.value);$('#r-itens').innerHTML=recItens(e.target.value==='__outro'?null:p);if(p)$('#r-forn').value=p.fornecedor||''}
-  if(id==='r-tipo')$('#r-mae-w').hidden=e.target.value!=='filha';
+  if(id==='r-tipo'){$('#r-mae-w').hidden=e.target.value!=='filha';const ui=e.target.value==='unica';$('#r-itens').hidden=ui;$('#r-integral').hidden=!ui}
   if(id==='n-foto'||id==='r-foto'||id==='r-arq'){const f=e.target.files[0];foto=f?await lerArquivo(f):null;const pv=$(id==='n-foto'?'#n-prev':'#r-prev');const ch=$(id==='n-foto'?'#n-chip':'#r-chip');if(f){ch.hidden=false;ch.className='chip'+(foto?' ok':' err');ch.textContent=foto?('✔ Anexado: '+(f.name||'foto')+' ('+Math.max(1,Math.round(f.size/1024))+' KB)'):('✖ Não anexou: '+(f.name||'arquivo')+'. Tente de novo ou use outro arquivo.')}else ch.hidden=true;if(foto&&foto.startsWith('data:image')){pv.src=foto;pv.hidden=false}else{pv.hidden=true;if(foto)toast('PDF anexado: '+f.name+'. Se esse arquivo está no celular, apague depois de salvar.',4000)}if(foto&&foto.startsWith('data:image')&&id==='r-arq')toast('Imagem pronta. Se ela está na galeria, apague depois de salvar.',4000);if(f&&!foto&&f.size<=MAX_PDF)toast('Não consegui ler esse arquivo. Tente de novo.')}
 });
 document.addEventListener('submit',async e=>{
@@ -307,10 +308,10 @@ document.addEventListener('submit',async e=>{
       if(!pedidos.includes(p)){pedidos.push(p);save(K_PED,pedidos)}}
     else p=pedidos.find(x=>x.codigo===cod);
     const tipo=$('#r-tipo').value,nf=$('#r-nf').value.trim(),maeNf=tipo==='filha'?$('#r-mae').value.trim():'';
-    const itens=p.itens.map((_,i)=>{const el=document.querySelector(`.r-q[data-i="${i}"]`);return el?(parseFloat(el.value)||0):0});
+    const itens=tipo==='unica'?p.itens.map((it,i)=>Math.max(0,+(it.qtd||0)-recebidoItem(p,i))):p.itens.map((_,i)=>{const el=document.querySelector(`.r-q[data-i="${i}"]`);return el?(parseFloat(el.value)||0):0});
     if(p.externo&&p.itens.length===1&&!document.querySelector('.r-q')){}
     if(!nf)return toast('Informe o número da NF.');
-    if(!itens.some(x=>x>0))return toast('Informe a quantidade de pelo menos um item.');
+    if(!itens.some(x=>x>0))return toast(tipo==='unica'?'Esse pedido já está todo recebido (ou sem quantidade pedida). Use NF mãe/filha e digite as quantidades.':'Informe a quantidade de pelo menos um item.');
     if(tipo==='filha'&&!maeNf)return toast('Informe o número da NF mãe.');
     if(!foto&&!semFotoOk){semFotoOk=true;return toast('Sem foto da NF. Toque em Salvar de novo para salvar assim mesmo.',5000)}
     semFotoOk=false;
