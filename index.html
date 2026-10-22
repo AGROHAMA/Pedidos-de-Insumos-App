@@ -262,6 +262,7 @@ function vAjustes(){
   <button class="btn" type="button" id="b-inst" hidden>📲 Instalar app neste aparelho</button>
   <div class="small" id="inst-ajuda">Para instalar: no Chrome, menu ⋮ › "Instalar app" (ou "Adicionar à tela inicial"). No iPhone: Safari › Compartilhar › "Adicionar à Tela de Início".</div>
   <button class="btn ghost" type="button" id="b-link">Copiar link de configuração (para outro aparelho/navegador)</button>
+  <button class="btn ghost" type="button" id="b-zero" style="color:#b71c1c">Zerar dados deste aparelho (pedidos, recebimentos e fila)</button>
   <button class="btn ghost" type="button" id="b-exp">Copiar backup dos dados</button>
   <div class="small">Os pedidos ficam guardados neste aparelho. Sem internet, o envio entra na fila e sai sozinho quando a rede volta.</div></form>`;
 }
@@ -279,6 +280,7 @@ document.addEventListener('click',async e=>{
   if(e.target.id==='b-teste'){if(!settings.webhookUrl)return toast('Cadastre o endereço do fluxo primeiro.');await enfileirar('teste','',{evento:'teste',texto:`Teste do app de pedidos, enviado por ${settings.nome||'sem nome'} em ${fd(new Date().toISOString())}.`,registro:{}});toast('Teste na fila de envio.')}
   if(e.target.id==='b-inst'&&window._inst){window._inst.prompt();await window._inst.userChoice;window._inst=null;render()}
   if(e.target.id==='b-link'){const c=btoa(unescape(encodeURIComponent(JSON.stringify(settings))));const u=location.origin+location.pathname+'#cfg='+c;try{await navigator.clipboard.writeText(u);toast('Link copiado. Contém os endereços dos fluxos: mande só para quem é da equipe.',5000)}catch{prompt('Copie o link:',u)}}
+  if(e.target.id==='b-zero'){if(!confirm('Apagar TODOS os pedidos, recebimentos e a fila de envio deste aparelho? Os Ajustes (nome e endereços) ficam. Isso não apaga nada do SharePoint nem do Planner.'))return;try{localStorage.removeItem(K_PED);localStorage.removeItem(K_REC);await tx('readwrite',s=>s.clear())}catch{}pedidos=[];recs=[];pendentes=0;badge();toast('Aparelho zerado. Se ainda houver arquivos no SharePoint, eles voltam na próxima atualização.',6000);render()}
   if(e.target.id==='b-exp'){try{await navigator.clipboard.writeText(JSON.stringify({pedidos,recs},null,1));toast('Backup copiado.')}catch{toast('Não foi possível copiar.')}}
 });
 document.addEventListener('change',async e=>{
