@@ -214,6 +214,7 @@ function vNovo(){
   return `<form class="card" id="fNovo">
   <label>Seu nome<input id="n-ger" required value="${esc(settings.nome)}" autocomplete="name"></label>
   <label>Produtor<select id="n-prd">${PRODUTORES.map(x=>`<option>${x}</option>`).join('')}<option value="__o">Outro</option></select></label>
+  <label style="flex-direction:row;align-items:center;gap:8px"><input id="n-dup" type="checkbox" style="width:auto"> <span>Repetir este mesmo pedido para os dois (${PRODUTORES.join(' e ')})</span></label>
   <label id="n-prd-o-w" hidden>Nome do produtor<input id="n-prd-o"></label>
   <label>Fazenda<select id="n-faz" required><option value="">Escolha a fazenda…</option>${FAZENDAS.map(f=>`<option>${esc(f)}</option>`).join('')}</select></label>
   <label>Fornecedor<input id="n-forn" list="dl-forn" autocomplete="off" placeholder="Digite para buscar o fornecedor"></label>
@@ -286,6 +287,7 @@ document.addEventListener('click',async e=>{
 document.addEventListener('change',async e=>{
   const id=e.target.id;
   if(id==='n-prd')$('#n-prd-o-w').hidden=e.target.value!=='__o';
+  if(id==='n-dup'){$('#n-prd').disabled=e.target.checked;if(e.target.checked)$('#n-prd-o-w').hidden=true;else $('#n-prd-o-w').hidden=$('#n-prd').value!=='__o'}
   if(id==='r-ped'){$('#r-outro').hidden=e.target.value!=='__outro';const p=pedidos.find(x=>x.codigo===e.target.value);$('#r-itens').innerHTML=recItens(e.target.value==='__outro'?null:p);if(p)$('#r-forn').value=p.fornecedor||''}
   if(id==='r-tipo'){$('#r-mae-w').hidden=e.target.value!=='filha';const ui=e.target.value==='unica';$('#r-itens').hidden=ui;$('#r-integral').hidden=!ui}
   if(id==='n-foto'||id==='r-foto'||id==='r-arq'){const f=e.target.files[0];foto=f?await lerArquivo(f):null;const pv=$(id==='n-foto'?'#n-prev':'#r-prev');const ch=$(id==='n-foto'?'#n-chip':'#r-chip');if(f){ch.hidden=false;ch.className='chip'+(foto?' ok':' err');ch.textContent=foto?('✔ Anexado: '+(f.name||'foto')+' ('+Math.max(1,Math.round(f.size/1024))+' KB)'):('✖ Não anexou: '+(f.name||'arquivo')+'. Tente de novo ou use outro arquivo.')}else ch.hidden=true;if(foto&&foto.startsWith('data:image')){pv.src=foto;pv.hidden=false}else{pv.hidden=true;if(foto)toast('PDF anexado: '+f.name+'. Se esse arquivo está no celular, apague depois de salvar.',4000)}if(foto&&foto.startsWith('data:image')&&id==='r-arq')toast('Imagem pronta. Se ela está na galeria, apague depois de salvar.',4000);if(f&&!foto&&f.size<=MAX_PDF)toast('Não consegui ler esse arquivo. Tente de novo.')}
@@ -296,12 +298,18 @@ document.addEventListener('submit',async e=>{
   if(id==='fNovo'){
     const itens=[...document.querySelectorAll('#itens .it')].map(r=>({nome:$('.i-nome',r).value.trim(),qtd:parseFloat($('.i-qtd',r).value),un:$('.i-un',r).value,preco:parseFloat($('.i-preco',r).value)||0})).filter(i=>i.nome);
     if(!itens.length||itens.some(i=>!(i.qtd>0)))return toast('Cada item precisa de produto e quantidade.');
-    const d=new Date(),p2=n=>String(n).padStart(2,'0'),rnd=Math.random().toString(36).slice(2,4).toUpperCase();
-    const prd=$('#n-prd').value==='__o'?$('#n-prd-o').value.trim():$('#n-prd').value;
-    const p={id:'p'+Date.now(),codigo:`P-${p2(d.getDate())}${p2(d.getMonth()+1)}-${p2(d.getHours())}${p2(d.getMinutes())}-${rnd}`,gerente:$('#n-ger').value.trim(),produtor:prd,fazenda:$('#n-faz').value.trim(),fornecedor:$('#n-forn').value.trim(),itens,vencimento:$('#n-venc').value,prazo:$('#n-prazo').value.trim(),uso:$('#n-uso').value.trim(),obs:$('#n-obs').value.trim(),criadoEm:d.toISOString(),encerrado:false,synced:false};
-    settings.nome=p.gerente;save(K_SET,settings);pedidos.push(p);save(K_PED,pedidos);
-    await enfileirar('pedido',p.id,{evento:'pedido_novo',texto:textoPedido(p),registro:{...p,total:totalPedido(p),foto}});
-    foto=null;openId=p.id;tab='pedidos';render();toast(settings.webhookUrl?'Pedido salvo e na fila de envio.':'Pedido salvo. Cadastre o endereço do fluxo em Ajustes para enviar.');
+    const d=new Date(),p2=n=>String(n).padStart(2,'0');
+    const dup=$('#n-dup')&&$('#n-dup').checked;
+    const prds=dup?[...PRODUTORES]:[$('#n-prd').value==='__o'?$('#n-prd-o').value.trim():$('#n-prd').value];
+    settings.nome=$('#n-ger').value.trim();save(K_SET,settings);
+    let p;
+    for(let k=0;k<prds.length;k++){
+      const rnd=Math.random().toString(36).slice(2,4).toUpperCase();
+      p={id:'p'+(Date.now()+k),codigo:`P-${p2(d.getDate())}${p2(d.getMonth()+1)}-${p2(d.getHours())}${p2(d.getMinutes())}-${rnd}`,gerente:$('#n-ger').value.trim(),produtor:prds[k],fazenda:$('#n-faz').value.trim(),fornecedor:$('#n-forn').value.trim(),itens:itens.map(i=>({...i})),vencimento:$('#n-venc').value,prazo:$('#n-prazo').value.trim(),uso:$('#n-uso').value.trim(),obs:$('#n-obs').value.trim(),criadoEm:new Date(d.getTime()+k).toISOString(),encerrado:false,synced:false};
+      pedidos.push(p);save(K_PED,pedidos);
+      await enfileirar('pedido',p.id,{evento:'pedido_novo',texto:textoPedido(p),registro:{...p,total:totalPedido(p),foto}});
+    }
+    foto=null;openId=p.id;tab='pedidos';render();toast(prds.length>1?'2 pedidos criados (um para cada produtor) e na fila de envio.':settings.webhookUrl?'Pedido salvo e na fila de envio.':'Pedido salvo. Cadastre o endereço do fluxo em Ajustes para enviar.');
   }
   if(id==='fRec'){
     let cod=$('#r-ped').value,p;
