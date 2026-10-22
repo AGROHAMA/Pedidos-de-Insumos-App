@@ -244,6 +244,7 @@ function vReceber(){
   <button class="btn" type="submit">Salvar recebimento</button></form>`;
 }
 function vAjustes(){
+  setTimeout(()=>{const b=$('#b-inst');if(b&&window._inst){b.hidden=false}},0);
   return `<form class="card" id="fSet">
   <label>Seu nome<input id="s-nome" value="${esc(settings.nome)}" autocomplete="name"></label>
   <label>Endereço do fluxo de PEDIDO<textarea id="s-url" placeholder="https://prod-…logic.azure.com/…">${esc(settings.webhookUrl)}</textarea></label>
@@ -251,6 +252,8 @@ function vAjustes(){
   <label>Endereço do fluxo de LISTA (sincroniza os aparelhos)<textarea id="s-url3" placeholder="https://prod-…logic.azure.com/…">${esc(settings.webhookUrlLista)}</textarea></label>
   <button class="btn" type="submit">Salvar ajustes</button>
   <div class="row"><button class="btn sec" type="button" id="b-teste">Enviar teste</button><button class="btn sec" type="button" id="b-flush">Enviar pendências agora</button></div>
+  <button class="btn" type="button" id="b-inst" hidden>📲 Instalar app neste aparelho</button>
+  <div class="small" id="inst-ajuda">Para instalar: no Chrome, menu ⋮ › "Instalar app" (ou "Adicionar à tela inicial"). No iPhone: Safari › Compartilhar › "Adicionar à Tela de Início".</div>
   <button class="btn ghost" type="button" id="b-link">Copiar link de configuração (para outro aparelho/navegador)</button>
   <button class="btn ghost" type="button" id="b-exp">Copiar backup dos dados</button>
   <div class="small">Os pedidos ficam guardados neste aparelho. Sem internet, o envio entra na fila e sai sozinho quando a rede volta.</div></form>`;
@@ -267,6 +270,7 @@ document.addEventListener('click',async e=>{
   if(e.target.id==='b-additem')addItem();
   if(e.target.id==='b-flush')flush(true);
   if(e.target.id==='b-teste'){if(!settings.webhookUrl)return toast('Cadastre o endereço do fluxo primeiro.');await enfileirar('teste','',{evento:'teste',texto:`Teste do app de pedidos, enviado por ${settings.nome||'sem nome'} em ${fd(new Date().toISOString())}.`,registro:{}});toast('Teste na fila de envio.')}
+  if(e.target.id==='b-inst'&&window._inst){window._inst.prompt();await window._inst.userChoice;window._inst=null;render()}
   if(e.target.id==='b-link'){const c=btoa(unescape(encodeURIComponent(JSON.stringify(settings))));const u=location.origin+location.pathname+'#cfg='+c;try{await navigator.clipboard.writeText(u);toast('Link copiado. Contém os endereços dos fluxos: mande só para quem é da equipe.',5000)}catch{prompt('Copie o link:',u)}}
   if(e.target.id==='b-exp'){try{await navigator.clipboard.writeText(JSON.stringify({pedidos,recs},null,1));toast('Backup copiado.')}catch{toast('Não foi possível copiar.')}}
 });
@@ -315,6 +319,8 @@ document.addEventListener('submit',async e=>{
 
 window.addEventListener('online',()=>{flush(false);sincronizar(false)});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){flush(false);sincronizar(false)}});
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();window._inst=e;if(tab==='ajustes')render()});
+window.addEventListener('appinstalled',()=>{window._inst=null;toast('App instalado! Use o ícone na tela inicial.',5000)});
 if('serviceWorker' in navigator)navigator.serviceWorker.register('service-worker.js').catch(()=>{});
 contarPend().then(()=>{render();flush(false).then(()=>sincronizar(false))});
 </script>
