@@ -1,5 +1,5 @@
 // Troque a versão (v1 -> v2...) sempre que publicar uma nova index.html
-const CACHE_VERSION='v4';
+const CACHE_VERSION='v5';
 const CACHE = 'pedidos-insumos-' + CACHE_VERSION;
 const SHELL = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
 

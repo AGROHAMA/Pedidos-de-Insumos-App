@@ -41,6 +41,7 @@ textarea{min-height:70px}
 .toast{position:fixed;left:16px;right:16px;bottom:calc(90px + env(safe-area-inset-bottom,0px));background:var(--g900);color:#fff;padding:12px 14px;border-radius:10px;z-index:10;font-size:14px}
 .prev{width:100%;max-height:200px;object-fit:contain;border-radius:8px;background:var(--t100)}
 [hidden]{display:none!important}
+.chip{margin:8px 0;padding:10px 12px;border-radius:10px;font-weight:600;font-size:14px}.chip.ok{background:#e3f4e6;color:#1b5e20}.chip.err{background:#fde7e7;color:#b71c1c}
 </style>
 </head>
 <body>
@@ -212,8 +213,9 @@ function vNovo(){
   <div class="row"><label>Vencimento<input id="n-venc" type="date"></label><label>Prazo de entrega<input id="n-prazo" placeholder="Entrega imediata"></label></div>
   <label>Uso (cultura / talhão)<input id="n-uso" placeholder="Ex.: soja, pivô 2 Retiro"></label>
   <label>Observação<textarea id="n-obs"></textarea></label>
-  <label>Anexo do pedido: foto ou PDF (opcional)<input id="n-foto" type="file" accept="image/*,application/pdf"></label>
+  <label>Anexo do pedido: foto ou PDF (opcional)<input id="n-foto" type="file" accept="image/*,application/pdf,.pdf"></label>
   <img class="prev" id="n-prev" alt="" hidden>
+  <div class="chip" id="n-chip" hidden></div>
   <div class="small">O PDF oficial do pedido continua indo na pasta PEDIDOS DE INSUMOS.</div>
   <button class="btn" type="submit">Enviar pedido</button></form>`;
 }
@@ -233,8 +235,9 @@ function vReceber(){
   <label>Fornecedor / produtor que emitiu<input id="r-forn" value="${esc(p0?p0.fornecedor:'')}"></label>
   <div id="r-itens" style="display:flex;flex-direction:column;gap:10px">${recItens(p0)}</div>
   <label>Tirar foto da NF agora (não fica salva no celular)<input id="r-foto" type="file" accept="image/*" capture="environment"></label>
-  <label>Ou anexar um arquivo (PDF escaneado ou foto da galeria)<input id="r-arq" type="file" accept="image/*,application/pdf"></label>
+  <label>Ou anexar um arquivo (PDF escaneado ou foto da galeria)<input id="r-arq" type="file" accept="image/*,application/pdf,.pdf"></label>
   <img class="prev" id="r-prev" alt="" hidden>
+  <div class="chip" id="r-chip" hidden></div>
   <button class="btn" type="submit">Salvar recebimento</button></form>`;
 }
 function vAjustes(){
@@ -267,7 +270,7 @@ document.addEventListener('change',async e=>{
   if(id==='n-prd')$('#n-prd-o-w').hidden=e.target.value!=='__o';
   if(id==='r-ped'){$('#r-outro').hidden=e.target.value!=='__outro';const p=pedidos.find(x=>x.codigo===e.target.value);$('#r-itens').innerHTML=recItens(e.target.value==='__outro'?null:p);if(p)$('#r-forn').value=p.fornecedor||''}
   if(id==='r-tipo')$('#r-mae-w').hidden=e.target.value!=='filha';
-  if(id==='n-foto'||id==='r-foto'||id==='r-arq'){const f=e.target.files[0];foto=f?await lerArquivo(f):null;const pv=$(id==='n-foto'?'#n-prev':'#r-prev');if(foto&&foto.startsWith('data:image')){pv.src=foto;pv.hidden=false}else{pv.hidden=true;if(foto)toast('PDF anexado: '+f.name+'. Se esse arquivo está no celular, apague depois de salvar.',4000)}if(foto&&foto.startsWith('data:image')&&id==='r-arq')toast('Imagem pronta. Se ela está na galeria, apague depois de salvar.',4000);if(f&&!foto&&f.size<=MAX_PDF)toast('Não consegui ler esse arquivo. Tente de novo.')}
+  if(id==='n-foto'||id==='r-foto'||id==='r-arq'){const f=e.target.files[0];foto=f?await lerArquivo(f):null;const pv=$(id==='n-foto'?'#n-prev':'#r-prev');const ch=$(id==='n-foto'?'#n-chip':'#r-chip');if(f){ch.hidden=false;ch.className='chip'+(foto?' ok':' err');ch.textContent=foto?('✔ Anexado: '+(f.name||'foto')+' ('+Math.max(1,Math.round(f.size/1024))+' KB)'):('✖ Não anexou: '+(f.name||'arquivo')+'. Tente de novo ou use outro arquivo.')}else ch.hidden=true;if(foto&&foto.startsWith('data:image')){pv.src=foto;pv.hidden=false}else{pv.hidden=true;if(foto)toast('PDF anexado: '+f.name+'. Se esse arquivo está no celular, apague depois de salvar.',4000)}if(foto&&foto.startsWith('data:image')&&id==='r-arq')toast('Imagem pronta. Se ela está na galeria, apague depois de salvar.',4000);if(f&&!foto&&f.size<=MAX_PDF)toast('Não consegui ler esse arquivo. Tente de novo.')}
 });
 document.addEventListener('submit',async e=>{
   e.preventDefault();const id=e.target.id;
