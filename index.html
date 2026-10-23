@@ -161,7 +161,8 @@ const linhaItem=i=>`${i.nome} ${fq(i.qtd)} ${i.un}${i.preco?` x ${fm(i.preco)} =
 function textoPedido(p){
   const topo=[p.fornecedor,[p.produtor,p.fazenda&&('fazenda '+p.fazenda)].filter(Boolean).join(', ')].filter(Boolean).join(': ');
   const tot=totalPedido(p);
-  return `PEDIDO ${p.codigo}\n${topo}\n${p.itens.map(linhaItem).join('\n')}${tot?`\nTotal: ${fm(tot)}`:''}\n${[p.vencimento&&('Vencimento '+fdate(p.vencimento)),p.uso,p.prazo].filter(Boolean).join('. ')}${p.obs?`\nObs.: ${p.obs}`:''}\nPedido por ${p.gerente} em ${fd(p.criadoEm)}`;
+  const tit=p.numero?`PEDIDO ${p.numero} · ${p.fornecedor||'sem fornecedor'} · ${p.codigo}`:`PEDIDO ${p.codigo}`;
+  return `${tit}\n${topo}\n${p.itens.map(linhaItem).join('\n')}${tot?`\nTotal: ${fm(tot)}`:''}\n${[p.vencimento&&('Vencimento '+fdate(p.vencimento)),p.uso,p.prazo].filter(Boolean).join('. ')}${p.obs?`\nObs.: ${p.obs}`:''}\nPedido por ${p.gerente} em ${fd(p.criadoEm)}`;
 }
 function textoRec(p,r,resumo){
   return `RECEBIMENTO · ${p.codigo}\n${TIPO[r.tipo]} ${r.nf}${r.maeNf?` (da mãe ${r.maeNf})`:''}${r.fornecedor?` · ${r.fornecedor}`:''}\n${p.itens.map((it,i)=>(+r.itens[i]?`${it.nome}: ${fq(+r.itens[i])} ${it.un}`:null)).filter(Boolean).join('\n')}\nRecebido por ${r.por} em ${fd(r.em)}\n${resumo}`;
@@ -192,8 +193,8 @@ function vPedidos(hist){
   return l.map(p=>{const [c,t]=status(p),rs=recsDe(p.codigo),open=openId===p.id,tot=totalPedido(p);
     const maes=rs.filter(r=>r.tipo==='mae');
     return `<div class="card"><div data-open="${p.id}" style="display:flex;flex-direction:column;gap:6px">
-      <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><span class="title">${esc(p.itens.map(i=>i.nome).join(' + '))}</span><span class="pill p-${c}">${t}</span></div>
-      <div class="muted">${esc([p.produtor,p.fazenda,p.fornecedor].filter(Boolean).join(' · '))}</div>
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><span class="title">${p.numero?esc((p.fornecedor||'Sem fornecedor')+' · Pedido '+p.numero):esc(p.itens.map(i=>i.nome).join(' + '))}</span><span class="pill p-${c}">${t}</span></div>
+      <div class="muted">${esc([p.produtor,p.fazenda,p.numero?p.itens.map(i=>i.nome).join(' + '):p.fornecedor].filter(Boolean).join(' · '))}</div>
       <div class="code">${esc(p.codigo)} · ${esc(p.gerente)} · ${fd(p.criadoEm)}${p.synced?'':' · <b style="color:var(--amber)">não enviado</b>'}</div>
       ${p.itens.map((it,i)=>{const rc=recebidoItem(p,i);return `<div class="muted">${esc(it.nome)}: ${fq(rc)} de ${fq(it.qtd)} ${esc(it.un)}</div><div class="bar"><i style="width:${Math.min(100,it.qtd?rc/it.qtd*100:0)}%"></i></div>`}).join('')}
       ${tot?`<div class="small">Total do pedido ${fm(tot)}${p.vencimento?` · vence ${fdate(p.vencimento)}`:''}${p.prazo?` · ${esc(p.prazo)}`:''}</div>`:''}</div>
@@ -217,6 +218,7 @@ function vNovo(){
   <label style="flex-direction:row;align-items:center;gap:8px"><input id="n-dup" type="checkbox" style="width:auto"> <span>Repetir este mesmo pedido para os dois (${PRODUTORES.join(' e ')})</span></label>
   <label id="n-prd-o-w" hidden>Nome do produtor<input id="n-prd-o"></label>
   <label>Fazenda<select id="n-faz" required><option value="">Escolha a fazenda…</option>${FAZENDAS.map(f=>`<option>${esc(f)}</option>`).join('')}</select></label>
+  <label>Nº do pedido (de compra)<input id="n-num" required autocomplete="off" inputmode="text" placeholder="Ex.: 12345"></label>
   <label>Fornecedor<input id="n-forn" list="dl-forn" autocomplete="off" placeholder="Digite para buscar o fornecedor"></label>
   <div class="title">Itens do pedido</div><div id="itens" style="display:flex;flex-direction:column;gap:10px"></div>
   <button type="button" class="btn sec" id="b-additem">+ Adicionar item</button>
@@ -234,7 +236,7 @@ function vReceber(){
   const abertos=pedidos.filter(p=>!p.encerrado).sort((a,b)=>b.criadoEm.localeCompare(a.criadoEm));
   const p0=abertos.find(p=>p.codigo===preselect)||abertos[0];
   return `<form class="card" id="fRec">
-  <label>Pedido<select id="r-ped">${abertos.map(p=>`<option value="${esc(p.codigo)}" ${p0&&p.codigo===p0.codigo?'selected':''}>${esc(p.codigo)} · ${esc(p.itens.map(i=>i.nome).join(' + '))}</option>`).join('')}<option value="__outro" ${!abertos.length?'selected':''}>Pedido de outro aparelho (digitar código)</option></select></label>
+  <label>Pedido<select id="r-ped">${abertos.map(p=>`<option value="${esc(p.codigo)}" ${p0&&p.codigo===p0.codigo?'selected':''}>${esc(p.numero?('Pedido '+p.numero+' · '+(p.fornecedor||'')):p.codigo)} · ${esc(p.itens.map(i=>i.nome).join(' + '))}</option>`).join('')}<option value="__outro" ${!abertos.length?'selected':''}>Pedido de outro aparelho (digitar código)</option></select></label>
   <div id="r-outro" ${abertos.length?'hidden':''} class="card" style="box-shadow:none;border:1px solid var(--t200)">
     <label>Código do pedido (está na postagem do Teams)<input id="o-cod" placeholder="P-2010-1432-K7"></label>
     <div class="row"><label>Produto<input id="o-prod"></label><label>Quantidade pedida<input id="o-qtd" type="number" step="any" inputmode="decimal"></label><label>Unidade<select id="o-un">${unOpts('L')}</select></label></div></div>
@@ -305,7 +307,7 @@ document.addEventListener('submit',async e=>{
     let p;
     for(let k=0;k<prds.length;k++){
       const rnd=Math.random().toString(36).slice(2,4).toUpperCase();
-      p={id:'p'+(Date.now()+k),codigo:`P-${p2(d.getDate())}${p2(d.getMonth()+1)}-${p2(d.getHours())}${p2(d.getMinutes())}-${rnd}`,gerente:$('#n-ger').value.trim(),produtor:prds[k],fazenda:$('#n-faz').value.trim(),fornecedor:$('#n-forn').value.trim(),itens:itens.map(i=>({...i})),vencimento:$('#n-venc').value,prazo:$('#n-prazo').value.trim(),uso:$('#n-uso').value.trim(),obs:$('#n-obs').value.trim(),criadoEm:new Date(d.getTime()+k).toISOString(),encerrado:false,synced:false};
+      p={id:'p'+(Date.now()+k),codigo:`P-${p2(d.getDate())}${p2(d.getMonth()+1)}-${p2(d.getHours())}${p2(d.getMinutes())}-${rnd}`,gerente:$('#n-ger').value.trim(),produtor:prds[k],fazenda:$('#n-faz').value.trim(),numero:$('#n-num').value.trim(),fornecedor:$('#n-forn').value.trim(),itens:itens.map(i=>({...i})),vencimento:$('#n-venc').value,prazo:$('#n-prazo').value.trim(),uso:$('#n-uso').value.trim(),obs:$('#n-obs').value.trim(),criadoEm:new Date(d.getTime()+k).toISOString(),encerrado:false,synced:false};
       pedidos.push(p);save(K_PED,pedidos);
       await enfileirar('pedido',p.id,{evento:'pedido_novo',texto:textoPedido(p),registro:{...p,total:totalPedido(p),foto}});
     }
