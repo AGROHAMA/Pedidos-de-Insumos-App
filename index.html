@@ -23,7 +23,9 @@ nav button[aria-current="page"]{color:var(--g700);box-shadow:inset 0 3px 0 var(-
 label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;color:var(--t700)}
 input,select,textarea{font:inherit;padding:11px 12px;border:1px solid var(--t200);border-radius:8px;background:#fff;width:100%;color:var(--t900)}
 textarea{min-height:70px}
+html,body{overscroll-behavior-y:contain}
 body{text-transform:uppercase}
+.addtop{position:sticky;top:0;z-index:4;background:var(--t100);padding:6px 0;display:flex;justify-content:space-between;align-items:center;gap:8px}
 #s-url,#s-url2,#s-url3,#busca::placeholder{text-transform:none}
 .busca{position:sticky;top:0;z-index:5;background:var(--t100);padding:4px 0 8px}
 .card{background:#fff;border-radius:var(--r);box-shadow:0 2px 10px rgba(20,40,25,.08);padding:14px;display:flex;flex-direction:column;gap:10px}
@@ -233,7 +235,7 @@ function calcItem(r){const q=parseFloat($('.i-qtd',r).value)||0,pv=parseFloat($(
   if(emb){const n=q/tam;t=`${fq(n)} embalagem(ns) de ${fq(tam)} ${un} × ${fm(pv)} = <b>${fm(pu)} por ${un}</b><br>`;if(Math.abs(n-Math.round(n))>1e-6)t+=`<span class="small">Atenção: ${fq(q)} ${un} não fecha embalagens inteiras.</span><br>`}
   t+=`${fq(q)} ${un} × ${fm(pu)} = <b>total ${fm(tot)}</b>`;h.innerHTML=t;h.hidden=false;
   return {preco:+pu.toFixed(6),emb:emb?{n:+(q/tam).toFixed(4),tam,precoEmb:pv}:undefined}}
-function addItem(){const d=document.createElement('div');d.innerHTML=itemRow();$('#itens').appendChild(d.firstElementChild)}
+function addItem(foco){const d=document.createElement('div');d.innerHTML=itemRow();const row=d.firstElementChild;$('#itens').appendChild(row);if(foco){row.scrollIntoView({block:'center',behavior:'smooth'});setTimeout(()=>{const i=$('.i-nome',row);if(i)i.focus({preventScroll:true})},350)}}
 function vNovo(){
   return `<form class="card" id="fNovo">
   <label>Seu nome<input id="n-ger" required value="${esc(settings.nome)}" autocomplete="name"></label>
@@ -243,7 +245,7 @@ function vNovo(){
   <label>Fazenda<select id="n-faz" required><option value="">Escolha a fazenda…</option>${FAZENDAS.map(f=>`<option>${esc(f)}</option>`).join('')}</select></label>
   <label>Nº do pedido (de compra)<input id="n-num" required autocomplete="off" inputmode="text" placeholder="Ex.: 12345"></label>
   <label>Fornecedor<input id="n-forn" list="dl-forn" autocomplete="off" placeholder="Digite para buscar o fornecedor"></label>
-  <div class="title">Itens do pedido</div><div id="itens" style="display:flex;flex-direction:column;gap:10px"></div>
+  <div class="addtop"><div class="title">Itens do pedido</div><button type="button" class="btn sec" id="b-additem2" style="width:auto;padding:8px 14px">+ Item</button></div><div id="itens" style="display:flex;flex-direction:column;gap:10px"></div>
   <button type="button" class="btn sec" id="b-additem">+ Adicionar item</button>
   <div class="row"><label>Vencimento<input id="n-venc" type="date"></label><label>Prazo de entrega<input id="n-prazo" placeholder="Entrega imediata"></label></div>
   <label>Uso (cultura / talhão)<input id="n-uso" placeholder="Ex.: soja, pivô 2 Retiro"></label>
@@ -301,7 +303,7 @@ document.addEventListener('click',async e=>{
   const r=e.target.closest('[data-receber]');if(r){preselect=r.dataset.receber;tab='receber';foto=null;render();scrollTo(0,0);return}
   const en=e.target.closest('[data-encerrar]');if(en){const p=pedidos.find(x=>x.id===en.dataset.encerrar);if(p){p.encerrado=true;save(K_PED,pedidos);render();toast('Pedido encerrado.')}return}
   if(e.target.closest('[data-rmitem]')){const it=e.target.closest('.it');if(document.querySelectorAll('#itens .it').length>1)it.remove();return}
-  if(e.target.id==='b-additem')addItem();
+  if(e.target.id==='b-additem'||e.target.id==='b-additem2')addItem(true);
   if(e.target.id==='b-flush')flush(true);
   if(e.target.id==='b-teste'){if(!settings.webhookUrl)return toast('Cadastre o endereço do fluxo primeiro.');await enfileirar('teste','',{evento:'teste',texto:`Teste do app de pedidos, enviado por ${settings.nome||'sem nome'} em ${fd(new Date().toISOString())}.`,registro:{}});toast('Teste na fila de envio.')}
   if(e.target.id==='b-inst'&&window._inst){window._inst.prompt();await window._inst.userChoice;window._inst=null;render()}
