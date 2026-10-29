@@ -70,7 +70,7 @@ const fd=iso=>{try{return new Date(iso).toLocaleString('pt-BR',{day:'2-digit',mo
 const fdate=v=>{if(!v)return '';const [y,m,d]=v.split('-');return `${d}/${m}/${y.slice(2)}`};
 const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}};
 const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));return true}catch{toast('Memória do aparelho cheia. Copie o backup em Ajustes.');return false}};
-const UNS=['kg','L','t','sc','un','cx','bag','ha'];
+const UNS=['kg','L','t','sc','un','cx','bag','dose','ha'];
 const PRODUTORES=['Koro Hamaguchi','Nilton Hamaguchi'];
 
 let settings=Object.assign({nome:'',webhookUrl:'',webhookUrlRec:'',webhookUrlLista:''},load(K_SET,{}));
