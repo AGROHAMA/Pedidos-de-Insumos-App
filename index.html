@@ -23,6 +23,9 @@ nav button[aria-current="page"]{color:var(--g700);box-shadow:inset 0 3px 0 var(-
 label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;color:var(--t700)}
 input,select,textarea{font:inherit;padding:11px 12px;border:1px solid var(--t200);border-radius:8px;background:#fff;width:100%;color:var(--t900)}
 textarea{min-height:70px}
+body{text-transform:uppercase}
+#s-url,#s-url2,#s-url3,#busca::placeholder{text-transform:none}
+.busca{position:sticky;top:0;z-index:5;background:var(--t100);padding:4px 0 8px}
 .card{background:#fff;border-radius:var(--r);box-shadow:0 2px 10px rgba(20,40,25,.08);padding:14px;display:flex;flex-direction:column;gap:10px}
 .btn{border:0;border-radius:10px;padding:13px 16px;font:700 16px system-ui;background:var(--g700);color:#fff}
 .btn.sec{background:var(--g100);color:var(--g700)}
@@ -130,7 +133,7 @@ async function sincronizar(manual){
     for(const raw of (Array.isArray(arr)?arr:[])){
       const x=lerItemRemoto(raw);if(!x||!x.id||!x.codigo)continue;
       if(x.tipo){ if(!recs.some(y=>y.id===x.id)){recs.push({...x,synced:true});novos++} }
-      else if(x.itens){ const l=pedidos.find(y=>y.id===x.id||y.codigo===x.codigo&&y.externo); if(!l){pedidos.push({...x,synced:true});novos++} else if(l.externo&&x.gerente){Object.assign(l,x,{externo:false,synced:true})} else if(l.leitura==='pendente'&&(x.leitura==='feita'||x.leitura==='falhou')&&Array.isArray(x.itens)){l.itens=x.itens;l.leitura=x.leitura;if(x.numero&&!l.numero)l.numero=x.numero;if(x.fornecedor&&!l.fornecedor)l.fornecedor=x.fornecedor} }
+      else if(x.itens){ const l=pedidos.find(y=>y.id===x.id||y.codigo===x.codigo&&y.externo); if(!l){pedidos.push({...x,synced:true});novos++} else if(l.externo&&x.gerente){Object.assign(l,x,{externo:false,synced:true})} }
     }
     save(K_PED,pedidos);save(K_REC,recs);renderBg();
     if(manual)toast(novos?`${novos} novo(s) da rede.`:'Tudo em dia.');
@@ -151,14 +154,12 @@ function recebidoItem(p,idx){return recsDe(p.codigo).filter(r=>r.tipo!=='mae').r
 function saldoMaeItem(p,mae,idx){return (+(mae.itens[idx]||0))-recsDe(p.codigo).filter(r=>r.tipo==='filha'&&r.maeNf===mae.nf).reduce((a,r)=>a+(+(r.itens[idx]||0)),0)}
 function status(p){
   if(p.encerrado)return['en','Encerrado'];
-  if(p.leitura==='pendente')return['ag','Lendo a foto…'];
-  if(p.leitura==='falhou')return['ag','Foto ilegível: refazer'];
   const rc=p.itens.map((_,i)=>recebidoItem(p,i));
   if(rc.every(x=>!x))return['ag','Aguardando entrega'];
   if(p.itens.some((it,i)=>rc[i]<it.qtd))return['pa','Recebido parcial'];
   return['ok','Recebido completo'];
 }
-const linhaItem=i=>`${i.nome} ${fq(i.qtd)} ${i.un}${i.preco?` x ${fm(i.preco)} = ${fm(i.qtd*i.preco)}`:''}`;
+const linhaItem=i=>`${i.nome} ${i.emb?`${fq(i.emb.n)} emb x ${fq(i.emb.tam)} ${i.un} = `:''}${fq(i.qtd)} ${i.un}${i.preco?` x ${fm(i.preco)} = ${fm(i.qtd*i.preco)}`:''}`;
 
 function textoPedido(p){
   const topo=[p.fornecedor,[p.produtor,p.fazenda&&('fazenda '+p.fazenda)].filter(Boolean).join(', ')].filter(Boolean).join(': ');
@@ -180,17 +181,27 @@ function lerArquivo(file){return new Promise(res=>{if(file.type==='application/p
 
 /* ---------- telas ---------- */
 /* atualização em segundo plano: nunca apaga formulário que alguém está preenchendo */
-function renderBg(){if(tab==='pedidos'||tab==='recebidos')render()}
+let busca='';
+function renderBg(){if(document.activeElement&&document.activeElement.id==='busca')return;if(tab==='pedidos'||tab==='recebidos')render()}
 function render(){
   const dl=$('#dl-forn');if(dl&&!dl.children.length)dl.innerHTML=FORNECEDORES.map(n=>`<option value="${esc(n)}">`).join('');
   document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-current',b.dataset.tab===tab?'page':'false'));
   $('#app').innerHTML={pedidos:()=>vPedidos(false),recebidos:()=>vPedidos(true),novo:vNovo,receber:vReceber,ajustes:vAjustes}[tab]();
   if(tab==='novo'&&!$('#itens .it'))addItem();
 }
+const slug=x=>String(x||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40);
+const stamp=d=>{const p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`};
+const extDe=f=>!f?'':/^data:application\/pdf/.test(f)?'pdf':/^data:image\/png/.test(f)?'png':'jpg';
+const nomeArq=(base,f)=>({arquivoBase:base,arquivoNome:f?base+'.'+extDe(f):''});
 const unOpts=sel=>UNS.map(u=>`<option ${u===sel?'selected':''}>${u}</option>`).join('');
-function vPedidos(hist){
+const semAc=t=>String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+function vPedidos(hist){return `<div class="busca"><input id="busca" type="search" placeholder="🔍 Buscar: nº do pedido, fornecedor, produto, fazenda, NF…" value="${esc(busca)}" autocomplete="off"></div><div id="lista">${listaPedidos(hist)}</div>`}
+function listaPedidos(hist){
   const fim=p=>{const c=status(p)[0];return c==='ok'||c==='en'};
-  const l=[...pedidos].filter(p=>hist?fim(p):!fim(p)).sort((a,b)=>b.criadoEm.localeCompare(a.criadoEm));
+  const termos=semAc(busca).split(/\s+/).filter(Boolean);
+  const casa=p=>!termos.length||(h=>termos.every(t=>h.includes(t)))(semAc([p.numero,p.fornecedor,p.produtor,p.fazenda,p.codigo,p.gerente,p.uso,p.obs,p.itens.map(i=>i.nome).join(' '),recsDe(p.codigo).map(r=>r.nf+' '+(r.maeNf||'')).join(' ')].join(' ')));
+  const l=[...pedidos].filter(p=>(hist?fim(p):!fim(p))&&casa(p)).sort((a,b)=>b.criadoEm.localeCompare(a.criadoEm));
+  if(!l.length&&termos.length)return `<div class="empty">Nada encontrado para essa busca.</div>`;
   if(!l.length)return hist?`<div class="empty">Nenhum pedido recebido por completo ainda.<br>Quando todos os itens chegarem, o pedido vem para cá.</div>`:`<div class="empty">Nenhum pedido em aberto.<br>Toque em <b>Novo</b> para fazer um pedido.</div>`;
   return l.map(p=>{const [c,t]=status(p),rs=recsDe(p.codigo),open=openId===p.id,tot=totalPedido(p);
     const maes=rs.filter(r=>r.tipo==='mae');
@@ -199,7 +210,6 @@ function vPedidos(hist){
       <div class="muted">${esc([p.produtor,p.fazenda,p.numero?p.itens.map(i=>i.nome).join(' + '):p.fornecedor].filter(Boolean).join(' · '))}</div>
       <div class="code">${esc(p.codigo)} · ${esc(p.gerente)} · ${fd(p.criadoEm)}${p.synced?'':' · <b style="color:var(--amber)">não enviado</b>'}</div>
       ${p.itens.map((it,i)=>{const rc=recebidoItem(p,i);return `<div class="muted">${esc(it.nome)}: ${fq(rc)} de ${fq(it.qtd)} ${esc(it.un)}</div><div class="bar"><i style="width:${Math.min(100,it.qtd?rc/it.qtd*100:0)}%"></i></div>`}).join('')}
-      ${p.leitura==='pendente'?`<div class="muted">Itens serão preenchidos a partir da foto em alguns minutos. Toque em Atualizar depois.</div>`:''}
       ${tot?`<div class="small">Total do pedido ${fm(tot)}${p.vencimento?` · vence ${fdate(p.vencimento)}`:''}${p.prazo?` · ${esc(p.prazo)}`:''}</div>`:''}</div>
       ${open?`${p.uso?`<div class="muted">Uso: ${esc(p.uso)}</div>`:''}${p.obs?`<div class="muted">Obs.: ${esc(p.obs)}</div>`:''}
       ${maes.map(m=>`<div class="saldo"><b>NF mãe ${esc(m.nf)}</b><br>${p.itens.map((it,i)=>+m.itens[i]?`${esc(it.nome)}: total ${fq(+m.itens[i])} · saldo <b>${fq(saldoMaeItem(p,m,i))}</b> ${esc(it.un)}`:'').filter(Boolean).join('<br>')}</div>`).join('')}
@@ -209,26 +219,20 @@ function vPedidos(hist){
 }
 function itemRow(it={}){return `<div class="it card" style="box-shadow:none;border:1px solid var(--t200)">
   <label>Produto<input class="i-nome" required value="${esc(it.nome||'')}" placeholder="Ex.: Kennox, Score Flex, Ureia"></label>
-  <div class="row"><label>Quantidade<input class="i-qtd" type="number" step="any" min="0" inputmode="decimal" required></label>
-  <label>Unidade<select class="i-un">${unOpts('L')}</select></label>
-  <label>Preço unitário (R$)<input class="i-preco" type="number" step="any" min="0" inputmode="decimal"></label></div>
+  <div class="row"><label>Quanto precisa comprar<input class="i-qtd" type="number" step="any" min="0" inputmode="decimal" required placeholder="Ex.: 400"></label>
+  <label>Unidade<select class="i-un">${unOpts('L')}</select></label></div>
+  <div class="row"><label>Preço (R$)<input class="i-preco" type="number" step="any" min="0" inputmode="decimal" placeholder="Valor do orçamento"></label>
+  <label>Esse preço é por<select class="i-pt"><option value="u">litro / kg (unidade acima)</option><option value="e">embalagem fechada</option></select></label></div>
+  <label class="i-tam-w" hidden>Tamanho de cada embalagem (na mesma unidade, ex.: 20)<input class="i-tam" type="number" step="any" min="0" inputmode="decimal"></label>
+  <div class="saldo i-hint" hidden></div>
   <button type="button" class="btn ghost" data-rmitem>Remover item</button></div>`}
-function numBR(v){v=String(v||'').replace(/R\$|\s/g,'');if(!v||v==='?')return 0;if(v.includes(','))v=v.replace(/\./g,'').replace(',','.');const n=parseFloat(v);return isNaN(n)?0:n}
-function unNorm(u){const x=String(u||'').trim().toLowerCase();const m={l:'L',lt:'L',lts:'L',litro:'L',litros:'L',kg:'kg',kgs:'kg',quilo:'kg',quilos:'kg',t:'t',ton:'t',tonelada:'t',toneladas:'t',sc:'sc',saca:'sc',sacas:'sc',un:'un',und:'un',unid:'un',unidade:'un',cx:'cx',caixa:'cx',bag:'bag',bags:'bag',ha:'ha'};return m[x]||'L'}
-function colarItens(txt){
-  const linhas=String(txt||'').replace(/```[a-z]*/gi,'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-  const itens=[];let forn='',num='',venc='',prazo='';
-  for(const l of linhas){
-    let m;
-    if((m=l.match(/^fornecedor\s*[:=]\s*(.+)$/i))){forn=m[1].trim();continue}
-    if((m=l.match(/^(?:n[úu]mero do pedido|pedido|n[ºo°]\.?\s*(?:do )?pedido)\s*[:=]\s*(.+)$/i))){num=m[1].trim();continue}
-    if((m=l.match(/^vencimento\s*[:=]\s*(.+)$/i))){const v=m[1].trim();let q;if((q=v.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)))venc=`${q[3]}-${q[2].padStart(2,'0')}-${q[1].padStart(2,'0')}`;else if(/^\d{4}-\d{2}-\d{2}/.test(v))venc=v.slice(0,10);continue}
-    if((m=l.match(/^prazo(?: de entrega)?\s*[:=]\s*(.+)$/i))){prazo=m[1].trim();continue}
-    const c=l.split(';').map(x=>x.trim());
-    if(c.length>=3&&c[0]&&!/^produto$/i.test(c[0])){const qtd=numBR(c[1]);if(qtd>0)itens.push({nome:c[0],qtd,un:unNorm(c[2]),preco:numBR(c[3])})}
-  }
-  return {itens,forn,num,venc,prazo};
-}
+function calcItem(r){const q=parseFloat($('.i-qtd',r).value)||0,pv=parseFloat($('.i-preco',r).value)||0,un=$('.i-un',r).value,emb=$('.i-pt',r).value==='e',tam=parseFloat($('.i-tam',r).value)||0;
+  $('.i-tam-w',r).hidden=!emb;const h=$('.i-hint',r);
+  if(!pv||!q||(emb&&!tam)){h.hidden=true;return null}
+  const pu=emb?pv/tam:pv,tot=q*pu;let t='';
+  if(emb){const n=q/tam;t=`${fq(n)} embalagem(ns) de ${fq(tam)} ${un} × ${fm(pv)} = <b>${fm(pu)} por ${un}</b><br>`;if(Math.abs(n-Math.round(n))>1e-6)t+=`<span class="small">Atenção: ${fq(q)} ${un} não fecha embalagens inteiras.</span><br>`}
+  t+=`${fq(q)} ${un} × ${fm(pu)} = <b>total ${fm(tot)}</b>`;h.innerHTML=t;h.hidden=false;
+  return {preco:+pu.toFixed(6),emb:emb?{n:+(q/tam).toFixed(4),tam,precoEmb:pv}:undefined}}
 function addItem(){const d=document.createElement('div');d.innerHTML=itemRow();$('#itens').appendChild(d.firstElementChild)}
 function vNovo(){
   return `<form class="card" id="fNovo">
@@ -239,11 +243,8 @@ function vNovo(){
   <label>Fazenda<select id="n-faz" required><option value="">Escolha a fazenda…</option>${FAZENDAS.map(f=>`<option>${esc(f)}</option>`).join('')}</select></label>
   <label>Nº do pedido (de compra)<input id="n-num" required autocomplete="off" inputmode="text" placeholder="Ex.: 12345"></label>
   <label>Fornecedor<input id="n-forn" list="dl-forn" autocomplete="off" placeholder="Digite para buscar o fornecedor"></label>
-  <label style="flex-direction:row;align-items:center;gap:8px"><input id="n-ler" type="checkbox" style="width:auto"> <span>Não digitar os itens: ler da foto/PDF do pedido (preenche em alguns minutos)</span></label>
-  <div id="n-itens-w"><label>Colar itens do agente Leitor de Pedidos (opcional)<textarea id="n-colar" rows="4" placeholder="Cole aqui a resposta do agente: Produto;Quantidade;Unidade;Preço, uma linha por item"></textarea></label>
-  <button type="button" class="btn sec" id="b-colar">Preencher pelos itens colados</button>
   <div class="title">Itens do pedido</div><div id="itens" style="display:flex;flex-direction:column;gap:10px"></div>
-  <button type="button" class="btn sec" id="b-additem">+ Adicionar item</button></div>
+  <button type="button" class="btn sec" id="b-additem">+ Adicionar item</button>
   <div class="row"><label>Vencimento<input id="n-venc" type="date"></label><label>Prazo de entrega<input id="n-prazo" placeholder="Entrega imediata"></label></div>
   <label>Uso (cultura / talhão)<input id="n-uso" placeholder="Ex.: soja, pivô 2 Retiro"></label>
   <label>Observação<textarea id="n-obs"></textarea></label>
@@ -255,7 +256,7 @@ function vNovo(){
 }
 function recItens(p){return !p?`<label>Quantidade nesta NF<input class="r-q" data-i="0" type="number" step="any" min="0" inputmode="decimal" placeholder="0"></label>`:p.itens.map((it,i)=>`<label>${esc(it.nome)} nesta NF (${esc(it.un)})<input class="r-q" data-i="${i}" type="number" step="any" min="0" inputmode="decimal" placeholder="0"></label>`).join('')}
 function vReceber(){
-  const abertos=pedidos.filter(p=>!p.encerrado&&p.leitura!=='pendente'&&p.leitura!=='falhou').sort((a,b)=>b.criadoEm.localeCompare(a.criadoEm));
+  const abertos=pedidos.filter(p=>!p.encerrado).sort((a,b)=>b.criadoEm.localeCompare(a.criadoEm));
   const p0=abertos.find(p=>p.codigo===preselect)||abertos[0];
   return `<form class="card" id="fRec">
   <label>Pedido<select id="r-ped">${abertos.map(p=>`<option value="${esc(p.codigo)}" ${p0&&p.codigo===p0.codigo?'selected':''}>${esc(p.numero?('Pedido '+p.numero+' · '+(p.fornecedor||'')):p.codigo)} · ${esc(p.itens.map(i=>i.nome).join(' + '))}</option>`).join('')}<option value="__outro" ${!abertos.length?'selected':''}>Pedido de outro aparelho (digitar código)</option></select></label>
@@ -301,10 +302,6 @@ document.addEventListener('click',async e=>{
   const en=e.target.closest('[data-encerrar]');if(en){const p=pedidos.find(x=>x.id===en.dataset.encerrar);if(p){p.encerrado=true;save(K_PED,pedidos);render();toast('Pedido encerrado.')}return}
   if(e.target.closest('[data-rmitem]')){const it=e.target.closest('.it');if(document.querySelectorAll('#itens .it').length>1)it.remove();return}
   if(e.target.id==='b-additem')addItem();
-  if(e.target.id==='b-colar'){const x=colarItens($('#n-colar').value);if(!x.itens.length)return toast('Não encontrei itens. Use uma linha por item: Produto;Quantidade;Unidade;Preço.',5000);
-    const box=$('#itens');box.innerHTML='';x.itens.forEach(it=>{const d=document.createElement('div');d.innerHTML=itemRow(it);const row=d.firstElementChild;$('.i-qtd',row).value=it.qtd;$('.i-un',row).value=it.un;if(it.preco)$('.i-preco',row).value=it.preco;box.appendChild(row)});
-    if(x.forn)$('#n-forn').value=x.forn;if(x.num)$('#n-num').value=x.num;if(x.venc)$('#n-venc').value=x.venc;if(x.prazo)$('#n-prazo').value=x.prazo;
-    toast(x.itens.length+' item(ns) preenchido(s). Confira antes de enviar.',4000);return}
   if(e.target.id==='b-flush')flush(true);
   if(e.target.id==='b-teste'){if(!settings.webhookUrl)return toast('Cadastre o endereço do fluxo primeiro.');await enfileirar('teste','',{evento:'teste',texto:`Teste do app de pedidos, enviado por ${settings.nome||'sem nome'} em ${fd(new Date().toISOString())}.`,registro:{}});toast('Teste na fila de envio.')}
   if(e.target.id==='b-inst'&&window._inst){window._inst.prompt();await window._inst.userChoice;window._inst=null;render()}
@@ -318,17 +315,21 @@ document.addEventListener('change',async e=>{
   if(id==='n-dup'){$('#n-prd').disabled=e.target.checked;if(e.target.checked)$('#n-prd-o-w').hidden=true;else $('#n-prd-o-w').hidden=$('#n-prd').value!=='__o'}
   if(id==='r-ped'){$('#r-outro').hidden=e.target.value!=='__outro';const p=pedidos.find(x=>x.codigo===e.target.value);$('#r-itens').innerHTML=recItens(e.target.value==='__outro'?null:p);if(p)$('#r-forn').value=p.fornecedor||''}
   if(id==='r-tipo'){$('#r-mae-w').hidden=e.target.value!=='filha';const ui=e.target.value==='unica';$('#r-itens').hidden=ui;$('#r-integral').hidden=!ui}
-  if(id==='n-ler'){const on=e.target.checked;$('#n-itens-w').hidden=on;document.querySelectorAll('#n-itens-w [required],#n-itens-w [data-req]').forEach(el=>{if(on){el.dataset.req='1';el.required=false}else if(el.dataset.req){el.required=true}});if(on&&!foto)toast('Anexe a foto ou PDF do pedido abaixo.',4000);return}
   if(id==='n-foto'||id==='r-foto'||id==='r-arq'){const f=e.target.files[0];foto=f?await lerArquivo(f):null;const pv=$(id==='n-foto'?'#n-prev':'#r-prev');const ch=$(id==='n-foto'?'#n-chip':'#r-chip');if(f){ch.hidden=false;ch.className='chip'+(foto?' ok':' err');ch.textContent=foto?('✔ Anexado: '+(f.name||'foto')+' ('+Math.max(1,Math.round(f.size/1024))+' KB)'):('✖ Não anexou: '+(f.name||'arquivo')+'. Tente de novo ou use outro arquivo.')}else ch.hidden=true;if(foto&&foto.startsWith('data:image')){pv.src=foto;pv.hidden=false}else{pv.hidden=true;if(foto)toast('PDF anexado: '+f.name+'. Se esse arquivo está no celular, apague depois de salvar.',4000)}if(foto&&foto.startsWith('data:image')&&id==='r-arq')toast('Imagem pronta. Se ela está na galeria, apague depois de salvar.',4000);if(f&&!foto&&f.size<=MAX_PDF)toast('Não consegui ler esse arquivo. Tente de novo.')}
 });
+document.addEventListener('input',e=>{const t=e.target;
+  if(t.id==='busca'){busca=t.value;$('#lista').innerHTML=listaPedidos(tab==='recebidos');return}
+  if((t.tagName==='TEXTAREA'||(t.tagName==='INPUT'&&/^(text|search|)$/.test(t.type)))&&!t.closest('#fSet')){const a=t.selectionStart,b=t.selectionEnd,v=t.value.toUpperCase();if(v!==t.value){t.value=v;try{t.setSelectionRange(a,b)}catch{}}}
+});
+const _calc=e=>{const r=e.target.closest&&e.target.closest('.it');if(r&&/\bi-(qtd|un|preco|pt|tam)\b/.test(e.target.className))calcItem(r)};
+document.addEventListener('input',_calc);document.addEventListener('change',_calc);
 document.addEventListener('submit',async e=>{
   e.preventDefault();const id=e.target.id;
   if(id==='fSet'){settings={nome:$('#s-nome').value.trim(),webhookUrl:$('#s-url').value.trim(),webhookUrlRec:$('#s-url2').value.trim(),webhookUrlLista:$('#s-url3').value.trim()};save(K_SET,settings);toast('Ajustes salvos.');flush(false).then(()=>sincronizar(true))}
   if(id==='fNovo'){
-    const ler=$('#n-ler')&&$('#n-ler').checked;
-    if(ler&&!foto)return toast('Para ler da foto, anexe a foto ou PDF do pedido.',4000);
-    const itens=ler?[]:[...document.querySelectorAll('#itens .it')].map(r=>({nome:$('.i-nome',r).value.trim(),qtd:parseFloat($('.i-qtd',r).value),un:$('.i-un',r).value,preco:parseFloat($('.i-preco',r).value)||0})).filter(i=>i.nome);
-    if(!ler&&(!itens.length||itens.some(i=>!(i.qtd>0))))return toast('Cada item precisa de produto e quantidade.');
+    const itens=[...document.querySelectorAll('#itens .it')].map(r=>{const c=calcItem(r)||{preco:0};return {nome:$('.i-nome',r).value.trim(),qtd:parseFloat($('.i-qtd',r).value),un:$('.i-un',r).value,preco:c.preco,...(c.emb?{emb:c.emb}:{})}}).filter(i=>i.nome);
+    if((!itens.length||itens.some(i=>!(i.qtd>0))))return toast('Cada item precisa de produto e quantidade.');
+    if([...document.querySelectorAll('#itens .it')].some(r=>$('.i-pt',r).value==='e'&&!(parseFloat($('.i-tam',r).value)>0)))return toast('Informe o tamanho da embalagem (ex.: 20).',4000);
     const d=new Date(),p2=n=>String(n).padStart(2,'0');
     const dup=$('#n-dup')&&$('#n-dup').checked;
     const prds=dup?[...PRODUTORES]:[$('#n-prd').value==='__o'?$('#n-prd-o').value.trim():$('#n-prd').value];
@@ -336,9 +337,9 @@ document.addEventListener('submit',async e=>{
     let p;
     for(let k=0;k<prds.length;k++){
       const rnd=Math.random().toString(36).slice(2,4).toUpperCase();
-      p={id:'p'+(Date.now()+k),codigo:`P-${p2(d.getDate())}${p2(d.getMonth()+1)}-${p2(d.getHours())}${p2(d.getMinutes())}-${rnd}`,gerente:$('#n-ger').value.trim(),produtor:prds[k],fazenda:$('#n-faz').value.trim(),numero:$('#n-num').value.trim(),fornecedor:$('#n-forn').value.trim(),itens:itens.map(i=>({...i})),vencimento:$('#n-venc').value,prazo:$('#n-prazo').value.trim(),uso:$('#n-uso').value.trim(),obs:$('#n-obs').value.trim(),criadoEm:new Date(d.getTime()+k).toISOString(),encerrado:false,synced:false,...(ler?{leitura:'pendente'}:{})};
+      p={id:'p'+(Date.now()+k),codigo:`P-${p2(d.getDate())}${p2(d.getMonth()+1)}-${p2(d.getHours())}${p2(d.getMinutes())}-${rnd}`,gerente:$('#n-ger').value.trim(),produtor:prds[k],fazenda:$('#n-faz').value.trim(),numero:$('#n-num').value.trim(),fornecedor:$('#n-forn').value.trim(),itens:itens.map(i=>({...i})),vencimento:$('#n-venc').value,prazo:$('#n-prazo').value.trim(),uso:$('#n-uso').value.trim(),obs:$('#n-obs').value.trim(),criadoEm:new Date(d.getTime()+k).toISOString(),encerrado:false,synced:false};
       pedidos.push(p);save(K_PED,pedidos);
-      await enfileirar('pedido',p.id,{evento:'pedido_novo',texto:textoPedido(p),registro:{...p,total:totalPedido(p),foto}});
+      await enfileirar('pedido',p.id,{evento:'pedido_novo',texto:textoPedido(p),registro:{...p,total:totalPedido(p),foto,...nomeArq(`PEDIDO_${slug(p.numero)||'SEM-NUMERO'}_${slug(p.fornecedor)||'SEM-FORNECEDOR'}_${slug(p.fazenda)}_${p.codigo}`,foto)}});
     }
     foto=null;openId=p.id;tab='pedidos';render();toast(prds.length>1?'2 pedidos criados (um para cada produtor) e na fila de envio.':settings.webhookUrl?'Pedido salvo e na fila de envio.':'Pedido salvo. Cadastre o endereço do fluxo em Ajustes para enviar.');
   }
@@ -360,7 +361,7 @@ document.addEventListener('submit',async e=>{
     settings.nome=r.por;save(K_SET,settings);recs.push(r);save(K_REC,recs);
     const saldos=(tipo==='mae'||tipo==='filha')?(()=>{const m=recsDe(p.codigo).find(x=>x.tipo==='mae'&&x.nf===(tipo==='mae'?nf:maeNf));return m?p.itens.map((it,i)=>({item:it.nome,saldo:saldoMaeItem(p,m,i)})):null})():null;
     const resumo=resumoRec(p)+(saldos?`\nSaldo da NF mãe ${tipo==='mae'?nf:maeNf}: `+saldos.filter((s,i)=>true).map(s=>`${s.item} ${fq(s.saldo)}`).join(' · '):'');
-    await enfileirar('rec',r.id,{evento:'recebimento',texto:textoRec(p,r,resumo),registro:{...r,foto,saldoMae:saldos}});
+    await enfileirar('rec',r.id,{evento:'recebimento',texto:textoRec(p,r,resumo),registro:{...r,foto,saldoMae:saldos,...nomeArq(`NF_${slug(nf)}_${r.tipo.toUpperCase()}_PEDIDO_${slug(p.numero)||p.codigo}_${slug(r.fornecedor||p.fornecedor)||'SEM-FORNECEDOR'}_${stamp(new Date(r.em))}`,foto)}});
     foto=null;preselect='';openId=p.id;tab='pedidos';render();toast('Recebimento salvo e na fila de envio.');
   }
 });
